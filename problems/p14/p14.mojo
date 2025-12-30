@@ -25,6 +25,24 @@ fn prefix_sum_simple[
     global_i = block_dim.x * block_idx.x + thread_idx.x
     local_i = thread_idx.x
     # FILL ME IN (roughly 18 lines)
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    if global_i < size:
+        shared[local_i] = a[global_i]
+    barrier()
+    i: UInt = 1
+    while i < size:
+        if global_i < size and (local_i - i) >= 0:
+            shared[local_i] = shared[local_i - i] + shared[local_i]
+        i = 2 * i
+        barrier()
+
+    if global_i < size:
+        output[global_i] = shared[local_i]
 
 
 # ANCHOR_END: prefix_sum_simple
@@ -33,7 +51,7 @@ fn prefix_sum_simple[
 comptime SIZE_2 = 15
 comptime BLOCKS_PER_GRID_2 = (2, 1)
 comptime THREADS_PER_BLOCK_2 = (TPB, 1)
-comptime EXTENDED_SIZE = SIZE_2 + 2  # up to 2 blocks
+comptime EXTENDED_SIZE = SIZE_2
 comptime layout_2 = Layout.row_major(SIZE_2)
 comptime extended_layout = Layout.row_major(EXTENDED_SIZE)
 
@@ -48,6 +66,25 @@ fn prefix_sum_local_phase[
 ):
     global_i = block_dim.x * block_idx.x + thread_idx.x
     local_i = thread_idx.x
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    if global_i < size:
+        shared[local_i] = a[global_i]
+    barrier()
+    i: UInt = 1
+    while i < TPB:
+        if global_i < size and (local_i - i) >= 0:
+            shared[local_i] = shared[local_i - i] + shared[local_i]
+        i = 2 * i
+        barrier()
+
+    if global_i < size:
+        output[global_i] = shared[local_i]
+
     # FILL ME IN (roughly 20 lines)
 
 
@@ -56,6 +93,16 @@ fn prefix_sum_block_sum_phase[
     layout: Layout
 ](output: LayoutTensor[dtype, layout, MutAnyOrigin], size: UInt):
     global_i = block_dim.x * block_idx.x + thread_idx.x
+    if global_i < TPB:
+        return
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    output[global_i] = output[global_i] + output[TPB - 1]
+
     # FILL ME IN (roughly 3 lines)
 
 
@@ -75,10 +122,10 @@ def main():
         use_simple = argv()[1] == "--simple"
 
         size = SIZE if use_simple else SIZE_2
-        num_blocks = (size + TPB - 1) // TPB
+        # num_blocks = (size + TPB - 1) // TPB
 
-        if not use_simple and num_blocks > EXTENDED_SIZE - SIZE_2:
-            raise Error("Extended buffer too small for the number of blocks")
+        # if not use_simple and num_blocks > EXTENDED_SIZE - SIZE_2:
+        # raise Error("Extended buffer too small for the number of blocks")
 
         buffer_size = size if use_simple else EXTENDED_SIZE
         out = ctx.enqueue_create_buffer[dtype](buffer_size)

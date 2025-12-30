@@ -25,8 +25,34 @@ fn conv_1d_simple[
     b: LayoutTensor[dtype, conv_layout, ImmutAnyOrigin],
 ):
     global_i = block_dim.x * block_idx.x + thread_idx.x
-    local_i = Int(thread_idx.x)
+    local_i = UInt(thread_idx.x)
+    size = UInt(output.size())
+    b_size = UInt(b.size())
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    shared_b = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
     # FILL ME IN (roughly 14 lines)
+    if global_i < size:
+        shared[local_i] = a[local_i]
+
+    if global_i < b_size:
+        shared_b[local_i] = b[local_i]
+    barrier()
+    out: LayoutTensor[dtype, out_layout, MutAnyOrigin].element_type = 0
+    for i in range(b_size):
+        if i + global_i < size:
+            out += shared[local_i + i] * shared_b[i]
+    if global_i < size:
+        output[local_i] = out
 
 
 # ANCHOR_END: conv_1d_simple
@@ -48,8 +74,39 @@ fn conv_1d_block_boundary[
     a: LayoutTensor[dtype, in_layout, ImmutAnyOrigin],
     b: LayoutTensor[dtype, conv_layout, ImmutAnyOrigin],
 ):
-    global_i = Int(block_dim.x * block_idx.x + thread_idx.x)
-    local_i = Int(thread_idx.x)
+    global_i = block_dim.x * block_idx.x + thread_idx.x
+    local_i = UInt(thread_idx.x)
+    size = UInt(output.size())
+    b_size = UInt(b.size())
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB + CONV_2 - 1),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    shared_b = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    # FILL ME IN (roughly 14 lines)
+    if global_i < size:
+        shared[local_i] = a[global_i]
+
+    if global_i + TPB < size and local_i < CONV_2 - 1:
+        shared[local_i + TPB] = a[global_i + TPB]
+
+    if local_i < b_size:
+        shared_b[local_i] = b[local_i]
+    barrier()
+    out: LayoutTensor[dtype, out_layout, MutAnyOrigin].element_type = 0
+    for i in range(b_size):
+        if i + global_i < size:
+            out += shared[local_i + i] * shared_b[i]
+
+    if global_i < size:
+        output[global_i] = out
     # FILL ME IN (roughly 18 lines)
 
 

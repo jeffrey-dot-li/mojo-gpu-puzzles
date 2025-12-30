@@ -1,6 +1,7 @@
 from gpu import thread_idx
 from gpu.host import DeviceContext
 from testing import assert_equal
+import compile
 
 # ANCHOR: add_10
 comptime SIZE = 4
@@ -14,6 +15,7 @@ fn add_10(
     a: UnsafePointer[Scalar[dtype], MutAnyOrigin],
 ):
     i = thread_idx.x
+    output[i] = a[i] + 10
     # FILL ME IN (roughly 1 line)
 
 
@@ -21,6 +23,7 @@ fn add_10(
 
 
 def main():
+    print("hi")
     with DeviceContext() as ctx:
         out = ctx.enqueue_create_buffer[dtype](SIZE)
         out.enqueue_fill(0)
@@ -49,3 +52,5 @@ def main():
             print("expected:", expected)
             for i in range(SIZE):
                 assert_equal(out_host[i], expected[i])
+
+    # print(compile.compile_info[add_10, emission_kind="llvm"]())

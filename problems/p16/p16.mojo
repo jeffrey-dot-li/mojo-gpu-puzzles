@@ -26,6 +26,14 @@ fn naive_matmul[
     row = block_dim.y * block_idx.y + thread_idx.y
     col = block_dim.x * block_idx.x + thread_idx.x
     # FILL ME IN (roughly 6 lines)
+    sum: LayoutTensor[dtype, layout, MutAnyOrigin].element_type = 0
+    output_dim_0 = UInt(output.shape[0]())
+    output_dim_1 = UInt(output.shape[1]())
+
+    if row < output_dim_0 and col < output_dim_1:
+        for i in range(a.shape[1]()):
+            sum += a[row, i] * b[i, col]
+        output[row, col] = sum
 
 
 # ANCHOR_END: naive_matmul
@@ -43,6 +51,33 @@ fn single_block_matmul[
     col = block_dim.x * block_idx.x + thread_idx.x
     local_row = thread_idx.y
     local_col = thread_idx.x
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB, TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+
+    shared_b = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB, TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+
+    sum: LayoutTensor[dtype, layout, MutAnyOrigin].element_type = 0
+    output_dim_0 = UInt(output.shape[0]())
+    output_dim_1 = UInt(output.shape[1]())
+
+    if row < output_dim_0 and col < output_dim_1:
+        shared[local_row, local_col] = a[row, col]
+        shared_b[local_row, local_col] = b[row, col]
+    barrier()
+
+    if row < output_dim_0 and col < output_dim_1:
+        for i in range(a.shape[1]()):
+            sum += shared[row, i] * shared_b[i, col]
+        output[row, col] = sum
     # FILL ME IN (roughly 12 lines)
 
 
@@ -66,6 +101,41 @@ fn matmul_tiled[
     local_col = thread_idx.x
     tiled_row = block_idx.y * TPB + thread_idx.y
     tiled_col = block_idx.x * TPB + thread_idx.x
+
+    num_row_tiles = UInt(3)
+
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB, TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+
+    shared_b = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB, TPB),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    sum: LayoutTensor[dtype, layout, MutAnyOrigin].element_type = 0
+    output_dim_0 = UInt(output.shape[0]())
+    output_dim_1 = UInt(output.shape[1]())
+
+    for i in range(num_row_tiles):
+        offset = i * TPB
+        if tiled_row < output_dim_0 and tiled_col < output_dim_1:
+            shared[local_row, local_col] = a[tiled_row, offset + local_col]
+            shared_b[local_row, local_col] = b[offset + local_row, tiled_col]
+        barrier()
+
+        if tiled_row < output_dim_0 and tiled_col < output_dim_1:
+            for i in range(TPB):
+                sum += shared[local_row, i] * shared_b[i, local_col]
+
+        barrier()
+    if tiled_row < output_dim_0 and tiled_col < output_dim_1:
+        output[tiled_row, tiled_col] += sum
+
     # FILL ME IN (roughly 20 lines)
 
 

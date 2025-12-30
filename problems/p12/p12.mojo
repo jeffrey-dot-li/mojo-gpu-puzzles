@@ -20,7 +20,25 @@ fn dot_product(
     size: UInt,
 ):
     # FILL ME IN (roughly 13 lines)
-    ...
+    shared = stack_allocation[
+        TPB,
+        Scalar[dtype],
+        address_space = AddressSpace.SHARED,
+    ]()
+    global_i = block_dim.x * block_idx.x + thread_idx.x
+    local_i = thread_idx.x
+
+    if global_i < size:
+        shared[local_i] = a[global_i] * b[global_i]
+    barrier()
+    i: UInt = 1
+    while i < size:
+        if global_i < size and global_i % (2 * i) == 0:
+            shared[local_i] = shared[local_i] + shared[local_i + i]
+        i = 2 * i
+        barrier()
+    if global_i == 0:
+        output[local_i] = shared[local_i]
 
 
 # ANCHOR_END: dot_product

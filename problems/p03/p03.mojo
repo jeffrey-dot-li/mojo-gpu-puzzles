@@ -16,6 +16,7 @@ fn add_10_guard(
     size: UInt,
 ):
     i = thread_idx.x
+    output[i] = a[i] + 10
     # FILL ME IN (roughly 2 lines)
 
 
@@ -47,6 +48,8 @@ def main():
         for i in range(SIZE):
             expected[i] = i + 10
 
+        print("HELLO")
+        
         with out.map_to_host() as out_host:
             print("out:", out_host)
             print("expected:", expected)

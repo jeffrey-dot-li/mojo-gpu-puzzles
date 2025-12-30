@@ -25,6 +25,19 @@ fn pooling(
     ]()
     global_i = block_dim.x * block_idx.x + thread_idx.x
     local_i = thread_idx.x
+
+    shared[local_i] = a[local_i]
+    barrier()
+    total: Scalar[DType.float32] = 0
+
+    for i in range(3):
+        j = Int(local_i) - i
+        if j >= 0 and local_i < size:
+            total += a[j]
+
+    if local_i < size:
+        output[global_i] = total
+
     # FILL ME IN (roughly 10 lines)
 
 

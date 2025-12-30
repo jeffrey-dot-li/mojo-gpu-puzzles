@@ -7,7 +7,7 @@ from testing import assert_equal
 comptime SIZE = 4
 comptime BLOCKS_PER_GRID = 1
 comptime THREADS_PER_BLOCK = SIZE
-comptime dtype = DType.float32
+comptime dtype = DType.bfloat16
 
 
 fn add(
@@ -16,6 +16,7 @@ fn add(
     b: UnsafePointer[Scalar[dtype], MutAnyOrigin],
 ):
     i = thread_idx.x
+    output[i] = a[i] + b[i]
     # FILL ME IN (roughly 1 line)
 
 
