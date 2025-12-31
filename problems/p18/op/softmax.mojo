@@ -26,13 +26,52 @@ fn softmax_gpu_kernel[
     input: LayoutTensor[dtype, layout, ImmutAnyOrigin],
 ):
     # FILL IN (roughly 31 lines)
-    ...
+    global_i = block_dim.x * block_idx.x + thread_idx.x
+    local_i = thread_idx.x
+
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(BLOCK_DIM_X),
+        MutAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    xi = LayoutTensor[dtype, layout, ImmutAnyOrigin].element_type(0)
+    if global_i < UInt(input_size):
+        xi = input[global_i]
+        shared[local_i] = xi
+    barrier()
+    i: LayoutTensor[dtype, layout, ImmutAnyOrigin].element_type = 1
+    while i < input_size:
+        if global_i < UInt(input_size) and (local_i - i) >= 0:
+            if shared[local_i - i] > shared[local_i]:
+                shared[local_i] = shared[local_i - i]
+        i = 2 * i
+        barrier()
+    numerator: LayoutTensor[dtype, layout, MutAnyOrigin].element_type = 0
+    if global_i < UInt(input_size):
+        maxed = shared[UInt(input_size) - 1]
+        numerator = exp(xi - maxed)
+    barrier()
+
+    if global_i < UInt(input_size):
+        shared[local_i] += numerator
+    barrier()
+    i = 1
+    while i < UInt(input_size):
+        if global_i < UInt(input_size) and (local_i - i) >= 0:
+            shared[local_i] += shared[local_i - i]
+        i = 2 * i
+        barrier()
+    denominator = shared[UInt(input_size) - 1]
+
+    if global_i < UInt(input_size):
+        output[global_i] = numerator / denominator
 
 
 # ANCHOR_END: softmax_gpu_kernel
 
 
-# ANCHOR: softmax_cpu_kernel
+# ANCHOR: softmax_cpu_kernel_solution
 fn softmax_cpu_kernel[
     layout: Layout,
     input_size: Int,
@@ -41,11 +80,21 @@ fn softmax_cpu_kernel[
     output: LayoutTensor[dtype, layout, MutAnyOrigin],
     input: LayoutTensor[dtype, layout, ImmutAnyOrigin],
 ):
-    # FILL IN (roughly 10 lines)
-    ...
+    var max_val: Scalar[dtype] = min_finite[dtype]()
+    for i in range(input_size):
+        max_val = max(max_val, rebind[Scalar[dtype]](input[i]))
+
+    var sum_exp: Scalar[dtype] = 0.0
+    for i in range(input_size):
+        var exp_val = rebind[Scalar[dtype]](exp(input[i] - max_val))
+        output[i] = exp_val
+        sum_exp += exp_val
+
+    for i in range(input_size):
+        output[i] = output[i] / sum_exp
 
 
-# ANCHOR_END: softmax_cpu_kernel
+# ANCHOR_END: softmax_cpu_kernel_solution
 
 import compiler
 from runtime.asyncrt import DeviceContextPtr
@@ -92,7 +141,7 @@ struct SoftmaxCustomOp:
             gpu_ctx.enqueue_function_checked[kernel, kernel](
                 output_tensor,
                 input_tensor,
-                grid_dim=GRID_DIM_X,
+                grid_dim=1,
                 block_dim=BLOCK_DIM_X,
             )
 
