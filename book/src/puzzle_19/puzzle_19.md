@@ -6,7 +6,7 @@ In this puzzle, we'll implement the attention mechanism as a custom MAX Graph op
 
 Mathematically, the attention function is defined as:
 
-$$\\Large \\text{Attention}(Q, K, V) = \\text{softmax}(Q \\cdot K^T) \\cdot V$$
+$$\Large \text{Attention}(Q, K, V) = \text{softmax}(Q \cdot K^T) \cdot V$$
 
 Where:
 
