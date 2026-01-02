@@ -41,12 +41,25 @@ fn embedding_kernel_coalesced[
 
     # Convert to (batch, seq, embed) coordinates
     # FILL IN roughly 4 lines
+    embed_index = global_idx % (embed_dim)
+    seq_index = Int(global_idx / embed_dim) % seq_len
+    batch_index = Int(global_idx / (embed_dim * seq_len)) % batch_size
+    # total_elements = (
+    # embed_index + embed_dim * seq_index + embed_dim * seq_len * batch_index
+    # )
 
+    # embed_index = 0
+    # seq_index = 0
+    # batch_index = 0
     # Get token index
     # FILL IN 1 line
+    weight_index = indices[batch_index, seq_index]
 
     # Simple, correct assignment
     # FILL IN 4 lines
+    output[batch_index, seq_index, embed_index] = weights[
+        weight_index, embed_index
+    ]
 
 
 # ANCHOR_END: embedding_kernel_coalesced
@@ -86,12 +99,16 @@ fn embedding_kernel_2d[
 
     # Convert to (batch, seq) coordinates
     # FILL IN 2 lines
+    batch_index = Int(batch_seq_idx / seq_len)
+    seq_index = batch_seq_idx % seq_len
 
     # Get token index
     # FILL IN 1 line
+    weight_index = indices[batch_index, seq_index]
 
     # Assignment with 2D grid pattern
     # FILL IN 4 lines
+    output[batch_index, seq_index, embed_idx] = weights[weight_index, embed_idx]
 
 
 # ANCHOR_END: embedding_kernel_2d
